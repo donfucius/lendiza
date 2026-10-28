@@ -200,6 +200,60 @@ if(LENDIZA_BUILD_TESTS)
                 $<$<C_COMPILER_ID:GNU,Clang>:-fsanitize=address>)
         endforeach()
     endif()
+
+    # -----------------------------------------------------------------------
+    # Differential vectors against Zydis/Capstone test data (tests/diff/).
+    #
+    # The harness is an ordinary target so any toolchain builds it; the test
+    # drives vector generation plus the comparison, and fails on any suspect
+    # mismatch (compare.py exits 1). Exit 77 marks the test skipped - that is
+    # how a machine without PyYAML reports itself, so the suite stays green
+    # on a bare toolchain. Only registered when the data and an interpreter
+    # are actually present.
+    # -----------------------------------------------------------------------
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND
+            AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/zydis")
+        add_executable(lendiza_diff_harness tests/diff/harness.cpp src/lendiza.cpp)
+        target_include_directories(lendiza_diff_harness PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/include")
+        target_compile_features(lendiza_diff_harness PRIVATE cxx_std_17)
+        # harness.cpp uses fopen; only MSVC cares, the define is a no-op elsewhere.
+        target_compile_definitions(lendiza_diff_harness PRIVATE _CRT_SECURE_NO_WARNINGS)
+        if(MSVC)
+            target_compile_options(lendiza_diff_harness PRIVATE /W4)
+        else()
+            target_compile_options(lendiza_diff_harness PRIVATE -Wall -Wextra)
+        endif()
+
+        # Build-time gate: the decoder is header-only, so this target
+        # re-links on every core change - the right moment to re-run the
+        # differential check. Fails the build on any suspect mismatch;
+        # missing PyYAML/data downgrades to a STATUS line (see the script).
+        add_custom_command(TARGET lendiza_diff_harness POST_BUILD
+            COMMAND ${CMAKE_COMMAND}
+                -DPYTHON=${Python3_EXECUTABLE}
+                -DCOMPARE=${CMAKE_CURRENT_SOURCE_DIR}/tests/diff/compare.py
+                -DHARNESS=$<TARGET_FILE:lendiza_diff_harness>
+                -DWORKDIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/diff
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/diff/build_check.cmake
+            COMMENT "differential check vs Zydis/Capstone vectors"
+            VERBATIM)
+
+        add_test(NAME lendiza_diff
+            COMMAND ${Python3_EXECUTABLE}
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/diff/compare.py"
+                    --gen
+                    --harness $<TARGET_FILE:lendiza_diff_harness>)
+        set_tests_properties(lendiza_diff PROPERTIES
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/tests/diff"
+            LABELS "diff"
+            TIMEOUT 600
+            SKIP_RETURN_CODE 77)
+    else()
+        message(STATUS "lendiza_diff not registered: Python3 interpreter "
+            "or third_party/ test data missing")
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------

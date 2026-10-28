@@ -21,6 +21,7 @@ cmake -S . -B build -G Ninja
 cmake --build build
 ctest --test-dir build -L quick          # suites
 ctest --test-dir build -L kernel-safety  # guard-page + ASan probes
+ctest --test-dir build -R lendiza_diff   # Zydis/Capstone differential vectors
 ```
 Produces two static libraries (`lendiza`, `lendiza_d`), the example executables
 and the test binaries; `cmake --install build --prefix <dir>` installs libraries,
@@ -129,6 +130,9 @@ Consequences worth knowing:
 `tests/README.md` documents the suites, the fixed decoder bugs this refactor
 caught, the remaining known gaps (notably the IA-32 `0F A8-AF` table row), and
 how to re-record the behaviour baseline in `tests/data/`.
+`tests/diff/` additionally diffs the decoder against Zydis and Capstone
+test vectors on instruction length - external ground truth over
+fuzzer-derived and real-world byte streams; see `tests/diff/README.md`.
 
 ### Benchmark
 `bench/bench_lde.cpp` sweeps real `.text` twice — once per decoder — and reports

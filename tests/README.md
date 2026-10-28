@@ -136,6 +136,31 @@ the tables plus their dispatch wiring were afterwards verified by
 diffs=0). It is that verified equality a hand-edited entry has to survive, so
 a table edit that is not script-regenerated will show up there first.
 
+### `tests/diff/` — differential vectors (`lendiza_diff`)
+Converts Zydis and Capstone test data (`third_party/`) into per-instruction
+length expectations and diffs them against the decoder. This is the external
+ground truth the hand-written suites cannot provide: two independent, widely
+validated decoders over real-world and fuzzer-derived byte streams. The
+harness builds as the `lendiza_diff_harness` CMake target, and because the
+decoder is header-only that target re-links on every core change - its
+POST_BUILD step re-runs `compare.py --gen` and fails the build on any
+suspect mismatch, so `cmake --build` is itself the gate. The ctest entry
+`lendiza_diff` (label `diff`) is the explicit rerun; it reports "Skipped"
+(exit 77) when PyYAML or the third_party data is unavailable, and
+`ctest -L quick` does not pick it up. Run it explicitly:
+
+```bash
+ctest --test-dir build -R lendiza_diff --output-on-failure
+```
+
+Without CMake the same check runs standalone (`gen_vectors.py`, then
+`tests/diff/build.bat` / `build.sh`, then `compare.py`).
+
+Current status: 356 streams / 384 sized steps, 343 agree (89.3%), 0 suspect;
+the 41 by-design divergences (3DNow! row, VEX/EVEX, `0x66`-branch AMD
+semantics, REX2, TSX XBEGIN, IA-32 VEX-as-LDS, one derived-byte artifact)
+are documented bucket by bucket in `tests/diff/README.md`.
+
 ### `guard_page.cpp`, `asan_truncation.c` — standalone probes, not gtest cases
 `guard_page.cpp` puts every input against a `PAGE_NOACCESS`/`PROT_NONE` page and
 turns a fault into a reported violation (2.76M decodes, 0 over-reads). It starts
@@ -201,6 +226,8 @@ in a mutable `inline static` member, so every one of these was also unsafe on SM
   ~4,000 ModRM/prefix combinations across the basic suites).
 - 1,436,594 oracle cases (718,297 per mode), 1,548,288 zero-diff group-sweep
   cases (`GroupOracleTest`), and 52,459 window-invariance comparisons.
+- 384 differential steps against Zydis/Capstone vectors (`tests/diff/`):
+  343 agree, 0 suspect mismatches.
 - 2.76M guard-page decodes and 2.6M ASan decodes, both with zero over-reads.
 - Run `ctest --output-on-failure` for current results; `ctest -L quick` skips the
   two long probes.
